@@ -6,6 +6,10 @@
 
 Arduino CLI MCP 提供 Arduino CLI 的包裝器，通過自動批准重複操作等功能實現流程簡化。對於經常使用 Arduino 項目的開發者和教育者來說，此工具尤為有用。
 
+## 模型上下文協議 (Model Context Protocol, MCP) 介紹
+
+Model Context Protocol (MCP) 是一個開放協議，專門用來讓大型語言模型 (LLM) 無縫整合外部數據來源與工具。無論是開發 AI IDE、強化聊天介面，還是構建自動化 AI 工作流，MCP 都能提供標準化的方式來連接 LLM 與所需的上下文環境。透過 MCP，Arduino CLI MCP 伺服器能夠與各種 AI 模型進行交互，處理 Arduino 相關的操作和命令。
+
 ## 配置
 
 工具可以使用 JSON 格式進行配置，如下所示：
@@ -235,6 +239,16 @@ python -m arduino_cli_mcp
   "success": true,
   "output": "Sketch uses 924 bytes (2%) of program storage space. Maximum is 32256 bytes.",
   "binary_path": "/path/to/build/arduino.avr.uno/Blink.ino.hex"
+}
+```
+
+3. 錯誤回應範例：
+
+```json
+{
+  "error": true,
+  "message": "編譯失敗：第5行有語法錯誤",
+  "details": "語句結尾缺少分號"
 }
 ```
 

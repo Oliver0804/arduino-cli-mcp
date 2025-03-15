@@ -1,10 +1,31 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "arduino-cli-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Arduino CLI MCP Server for GitHub Copilot integration"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "httpx>=0.28.1",
-    "mcp[cli]>=1.4.1",
+authors = [
+    {name = "Oliver0804", email = "icetzsr@gmail.com"}
 ]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp",
+    "pydantic",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/oliver0804/arduino-cli-mcp"
+"Bug Tracker" = "https://github.com/oliver0804/arduino-cli-mcp/issues"
+
+[project.scripts]
+arduino-cli-mcp = "arduino_cli_mcp.main:main"

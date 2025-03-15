@@ -30,6 +30,7 @@ class CompileResult(BaseModel):
     output: str
     error: str = ""
     binary_path: str = ""
+    error_code: int = 0  # 添加錯誤代碼字段
 
 class UploadResult(BaseModel):
     sketch: str
@@ -94,7 +95,7 @@ class ArduinoCliServer:
         with open(output_file, "w") as f:
             json.dump(result.model_dump(), f, indent=2)
 
-    def get_command_result(self, command: str) -> Optional<ArduinoCommandResult]:
+    def get_command_result(self, command: str) -> Optional[ArduinoCommandResult]:
         """Get previously executed command result from memory or file"""
         # First check if exists in memory
         if command in self.command_results:
@@ -786,6 +787,7 @@ void loop() {{
         
         binary_path = ""
         build_dir = ""
+        error_code = 0  # 初始化錯誤代碼
         
         if compile_result.success:
             # Extract binary file path from output
@@ -807,12 +809,25 @@ void loop() {{
                             break
                 except Exception as e:
                     print(f"Error searching for hex file: {e}")
+        else:
+            # 從輸出中提取錯誤代碼
+            # 常見的編譯錯誤代碼: 1=語法錯誤, 2=未定義引用, 3=庫錯誤, 4=板卡不支持
+            error_text = compile_result.error or compile_result.output
+            if "undefined reference" in error_text:
+                error_code = 2
+            elif "No such file or directory" in error_text or "library" in error_text.lower() and "not found" in error_text.lower():
+                error_code = 3
+            elif "board" in error_text.lower() and ("unknown" in error_text.lower() or "not found" in error_text.lower()):
+                error_code = 4
+            else:
+                error_code = 1  # 默認為語法錯誤
         
         return {
             "success": compile_result.success,
             "build_dir": build_dir,
             "hex_path": binary_path,
-            "error": compile_result.error if not compile_result.success else ""
+            "error": compile_result.error if not compile_result.success else "",
+            "error_code": error_code  # 添加錯誤代碼到返回結果
         }
 
     def upload_hex(self, hex_path: str, port: str, fqbn: str = "") -> Dict:
@@ -942,7 +957,8 @@ void loop() {{
                 "build_dir": compile_result.get("build_dir", ""),
                 "hex_path": compile_result.get("hex_path", ""),
                 "command": f"arduino-cli compile --fqbn {fqbn} {sketch_path}",
-                "error": f"Compilation failed: {compile_result['error']}"
+                "error": f"Compilation failed: {compile_result['error']}",
+                "error_code": compile_result.get("error_code", 1)  # 包含錯誤代碼
             }
             
         # Get the hex file path from compilation result
@@ -985,7 +1001,8 @@ void loop() {{
             "build_dir": build_dir,
             "hex_path": hex_path,
             "command": upload_result["command"],
-            "error": upload_result["error"] if not upload_result["success"] else ""
+            "error": upload_result["error"] if not upload_result["success"] else "",
+            "error_code": 0  # 成功時的錯誤代碼為0
         }
 
 async def serve(workdir=None) -> None:
@@ -1200,7 +1217,7 @@ async def serve(workdir=None) -> None:
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, options)
 
-if __name__ == "__main__":
+def main():
     import asyncio
     
     # Parse command line arguments
@@ -1215,3 +1232,6 @@ if __name__ == "__main__":
     
     print(f"Starting Arduino CLI MCP server with workdir: {args.workdir or 'current directory'}")
     asyncio.run(serve(workdir=args.workdir))
+
+if __name__ == "__main__":
+    main()
