@@ -24,12 +24,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
           pip install -e .
-      - name: 安裝 Arduino CLI
+      - name: 檢查環境
         run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-          echo "$HOME/bin" >> $GITHUB_PATH
-      - name: 檢查 Arduino CLI 安裝
-        run: arduino-cli version
+          echo "注意: Arduino CLI 需由用戶自行安裝"
+          echo "測試環境資訊:"
+          python --version
+          pip list
       - name: 執行測試 (若有)
         run: |
           if [ -d "tests" ]; then
