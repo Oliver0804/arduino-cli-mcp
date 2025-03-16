@@ -4,7 +4,7 @@
 
 使用 arduino-cli-mcp 前，您需要：
 
-1. Python 3.8+ 環境
+1. Python 3.11+ 環境
 2. Arduino CLI 已安裝並設定在您的系統路徑中
 
 ## Arduino CLI 安裝指南

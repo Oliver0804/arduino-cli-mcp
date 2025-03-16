@@ -1004,7 +1004,28 @@ void loop() {{
             "error": upload_result["error"] if not upload_result["success"] else "",
             "error_code": 0  # 成功時的錯誤代碼為0
         }
+    
 
+    def install_library(self, library_name: str) -> ArduinoCommandResult:
+        """安裝 Arduino 函式庫"""
+        install_cmd = f"lib install \"{library_name}\""
+        return self.execute_cli_command(install_cmd)
+
+    def search_library(self, query: str) -> ArduinoCommandResult:
+        """搜尋 Arduino 函式庫"""
+        search_cmd = f"lib search \"{query}\" --format json"
+        return self.execute_cli_command(search_cmd)
+
+    def list_installed_libraries(self) -> ArduinoCommandResult:
+        """列出所有已安裝的 Arduino 函式庫"""
+        list_cmd = "lib list --format json"
+        return self.execute_cli_command(list_cmd)
+
+    def uninstall_library(self, library_name: str) -> ArduinoCommandResult:
+        """卸載 Arduino 函式庫"""
+        uninstall_cmd = f"lib uninstall \"{library_name}\""
+        return self.execute_cli_command(uninstall_cmd)
+    
 async def serve(workdir=None) -> None:
     server = Server("arduino-cli-mcp")
     # Initialize with workdir
@@ -1096,27 +1117,81 @@ async def serve(workdir=None) -> None:
                 },
             ),
 
+            # Tool(
+            #     name="compile_upload",
+            #     description="Compile and upload an Arduino sketch in one step / 一步驟完成編譯和上傳Arduino草圖",
+            #     inputSchema={
+            #         "type": "object",
+            #         "properties": {
+            #             "sketch_path": {
+            #                 "type": "string",
+            #                 "description": "Path to the .ino file / .ino文件的路徑",
+            #             },
+            #             "port": {
+            #                 "type": "string",
+            #                 "description": "Serial port of the board / 開發板的串口",
+            #             },
+            #             "fqbn": {
+            #                 "type": "string",
+            #                 "description": "Fully Qualified Board Name / 完整開發板名稱",
+            #                 "default": "arduino:avr:uno"
+            #             }
+            #         },
+            #         "required": ["sketch_path", "port", "fqbn"]
+            #     },
+            # ),
+
             Tool(
-                name="compile_upload",
-                description="Compile and upload an Arduino sketch in one step / 一步驟完成編譯和上傳Arduino草圖",
+                name="install_library",
+                description="Install an Arduino library / 安裝Arduino函式庫",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "sketch_path": {
+                        "library_name": {
                             "type": "string",
-                            "description": "Path to the .ino file / .ino文件的路徑",
-                        },
-                        "port": {
-                            "type": "string",
-                            "description": "Serial port of the board / 開發板的串口",
-                        },
-                        "fqbn": {
-                            "type": "string",
-                            "description": "Fully Qualified Board Name / 完整開發板名稱",
-                            "default": "arduino:avr:uno"
+                            "description": "Name of the library to install / 要安裝的函式庫名稱",
                         }
                     },
-                    "required": ["sketch_path", "port", "fqbn"]
+                    "required": ["library_name"]
+                },
+            ),
+
+            Tool(
+                name="search_library",
+                description="Search for Arduino libraries / 搜尋Arduino函式庫",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query / 搜尋關鍵字",
+                        }
+                    },
+                    "required": ["query"]
+                },
+            ),
+
+            Tool(
+                name="list_libraries",
+                description="List all installed Arduino libraries / 列出所有已安裝的Arduino函式庫",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            
+            Tool(
+                name="uninstall_library",
+                description="Uninstall an Arduino library / 移除Arduino函式庫",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "library_name": {
+                            "type": "string",
+                            "description": "Name of the library to uninstall / 要移除的函式庫名稱",
+                        }
+                    },
+                    "required": ["library_name"]
                 },
             ),
         ]
@@ -1189,25 +1264,110 @@ async def serve(workdir=None) -> None:
                     TextContent(type="text", text=json.dumps(result, indent=2))
                 ]
 
-            elif name == "compile_upload":
-                sketch_path = arguments.get("sketch_path")
-                port = arguments.get("port")
-                fqbn = arguments.get("fqbn", "arduino:avr:uno")
+            # elif name == "compile_upload":
+            #     sketch_path = arguments.get("sketch_path")
+            #     port = arguments.get("port")
+            #     fqbn = arguments.get("fqbn", "arduino:avr:uno")
                 
-                if not sketch_path:
-                    raise ValueError("Missing required parameter: sketch_path")
+            #     if not sketch_path:
+            #         raise ValueError("Missing required parameter: sketch_path")
                 
-                if not port:
-                    raise ValueError("Missing required parameter: port")
+            #     if not port:
+            #         raise ValueError("Missing required parameter: port")
                 
-                if not fqbn:
-                    raise ValueError("Missing required parameter: fqbn")
+            #     if not fqbn:
+            #         raise ValueError("Missing required parameter: fqbn")
                 
-                result = arduino_server.compile_and_upload(sketch_path, port, fqbn)
+            #     result = arduino_server.compile_and_upload(sketch_path, port, fqbn)
+            #     return [
+            #         TextContent(type="text", text=json.dumps(result, indent=2))
+            #     ]
+            
+            elif name == "install_library":
+                library_name = arguments.get("library_name")
+                
+                if not library_name:
+                    raise ValueError("Missing required parameter: library_name")
+                
+                result = arduino_server.install_library(library_name)
                 return [
-                    TextContent(type="text", text=json.dumps(result, indent=2))
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.success,
+                        "message": result.output if result.success else result.error,
+                        "command": result.command
+                    }, indent=2))
                 ]
+            
+            elif name == "search_library":
+                query = arguments.get("query")
                 
+                if not query:
+                    raise ValueError("Missing required parameter: query")
+                
+                result = arduino_server.search_library(query)
+                
+                # 嘗試解析 JSON 輸出，如果失敗則使用原始輸出
+                try:
+                    if result.success and result.output:
+                        libraries = json.loads(result.output)
+                        return [
+                            TextContent(type="text", text=json.dumps({
+                                "success": True,
+                                "libraries": libraries
+                            }, indent=2))
+                        ]
+                except json.JSONDecodeError:
+                    pass
+                
+                # 使用原始輸出
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.success,
+                        "message": result.output if result.success else result.error,
+                        "command": result.command
+                    }, indent=2))
+                ]
+            
+            elif name == "list_libraries":
+                result = arduino_server.list_installed_libraries()
+                
+                # 嘗試解析 JSON 輸出，如果失敗則使用原始輸出
+                try:
+                    if result.success and result.output:
+                        libraries = json.loads(result.output)
+                        return [
+                            TextContent(type="text", text=json.dumps({
+                                "success": True,
+                                "libraries": libraries
+                            }, indent=2))
+                        ]
+                except json.JSONDecodeError:
+                    pass
+                
+                # 使用原始輸出
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.success,
+                        "message": result.output if result.success else result.error,
+                        "command": result.command
+                    }, indent=2))
+                ]
+            
+            elif name == "uninstall_library":
+                library_name = arguments.get("library_name")
+                
+                if not library_name:
+                    raise ValueError("Missing required parameter: library_name")
+                
+                result = arduino_server.uninstall_library(library_name)
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.success,
+                        "message": result.output if result.success else result.error,
+                        "command": result.command
+                    }, indent=2))
+                ]
+
             else:
                 raise ValueError(f"Unknown tool: {name}")
         except Exception as e:

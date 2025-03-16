@@ -1,14 +1,14 @@
 # Arduino CLI MCP
 
-Arduino CLI MCP is a GitHub Copilot integration server that provides tools for compiling and uploading Arduino sketches through the Arduino CLI.
+Arduino CLI MCP is a server that provides Arduino CLI integration for VSCode and Claude, allowing you to compile and upload Arduino sketches through the Arduino CLI.
 
 ## Overview
 
-Arduino CLI MCP provides a wrapper for the Arduino CLI, simplifying workflows through features such as automatic approval of repetitive operations. This tool is especially useful for developers and educators who frequently work with Arduino projects.
+Arduino CLI MCP provides a wrapper for Arduino CLI that simplifies workflows through features such as auto-approval of repetitive operations. This tool is particularly useful for developers and educators who frequently work with Arduino projects.
 
-## Model Context Protocol (MCP) Introduction
+## Introduction to Model Context Protocol (MCP)
 
-Model Context Protocol (MCP) is an open protocol specifically designed to enable large language models (LLMs) to seamlessly integrate with external data sources and tools. Whether you're developing an AI IDE, enhancing chat interfaces, or building automated AI workflows, MCP provides a standardized way to connect LLMs with the context they need. Through MCP, the Arduino CLI MCP server can interact with various AI models to handle Arduino-related operations and commands.
+Model Context Protocol (MCP) is an open protocol specifically designed to enable Large Language Models (LLMs) to seamlessly integrate with external data sources and tools. Whether you're developing an AI IDE, enhancing chat interfaces, or building automated AI workflows, MCP provides a standardized way to connect LLMs with the context they need. Through MCP, the Arduino CLI MCP server can interact with various AI models, handling Arduino-related operations and commands.
 
 ## Installation
 
@@ -16,19 +16,7 @@ Model Context Protocol (MCP) is an open protocol specifically designed to enable
 pip install arduino-cli-mcp
 ```
 
-### Installation with uv (recommended)
-
-When using [`uv`](https://docs.astral.sh/uv/), no explicit installation is needed. We'll use [`uvx`](https://docs.astral.sh/uv/guides/tools/) to directly execute _arduino-cli-mcp_.
-
-### Installation with pip
-
-Alternatively, you can install `arduino-cli-mcp` via pip:
-
-```bash
-pip install arduino-cli-mcp
-```
-
-After installation, you can run it using:
+After installation, you can run it with the following command:
 
 ```bash
 python -m arduino_cli_mcp
@@ -36,13 +24,13 @@ python -m arduino_cli_mcp
 
 ## Prerequisites
 
-- Arduino CLI installed and available in your PATH
-- Python 3.7+
-- Proper file permissions for the working directory
+- Arduino CLI installed and available in PATH
+- Python 3.11+
+- Working directory with appropriate file permissions
 
 ## Configuration
 
-The tool can be configured using JSON format as shown below:
+The tool can be configured using JSON format as follows:
 
 ```json
 "github.com/arduino-cli-mcp": {
@@ -63,34 +51,17 @@ The tool can be configured using JSON format as shown below:
 
 ### Configuration Options
 
-- `command`: The command to execute (Python in this example)
+- `command`: The command to execute (Python in this case)
 - `args`: List of arguments passed to the command
   - First argument is the path to the main script
   - `--workdir` specifies the working directory for Arduino CLI operations
 - `disabled`: Enable/disable the tool (set to `false` to enable)
-- `autoApprove`: List of Arduino CLI operations that can be automatically approved without user confirmation
+- `autoApprove`: List of Arduino CLI operations that can be auto-approved without user confirmation
   - Supported operations: `upload`, `compile`, `install_board`
 
 ### Configuration for Claude.app
 
-Add to your Claude settings:
-
-<details>
-<summary>Using uvx</summary>
-
-```json
-"mcpServers": {
-  "arduino": {
-    "command": "uvx",
-    "args": ["arduino-cli-mcp"]
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>Using pip install</summary>
+Add the following to your Claude settings:
 
 ```json
 "mcpServers": {
@@ -101,28 +72,9 @@ Add to your Claude settings:
 }
 ```
 
-</details>
-
 ### Configuration for Zed
 
-Add to your Zed settings.json file:
-
-<details>
-<summary>Using uvx</summary>
-
-```json
-"context_servers": [
-  "arduino-cli-mcp": {
-    "command": "uvx",
-    "args": ["arduino-cli-mcp"]
-  }
-],
-```
-
-</details>
-
-<details>
-<summary>Using pip install</summary>
+Add the following to your Zed settings.json file:
 
 ```json
 "context_servers": {
@@ -133,11 +85,9 @@ Add to your Zed settings.json file:
 },
 ```
 
-</details>
-
 ### Custom Configuration - Arduino CLI Path
 
-By default, the server looks for Arduino CLI in the system PATH. You can specify a custom path by adding the `--arduino-cli-path` parameter to the `args` list in the configuration.
+By default, the server looks for Arduino CLI in the system PATH. You can specify a custom path by adding the `--arduino-cli-path` parameter to the `args` list in your configuration.
 
 Example:
 
@@ -156,11 +106,11 @@ Start the MCP server:
 arduino-cli-mcp --workdir /path/to/your/arduino/projects
 ```
 
-Once configured, the tool will automatically handle Arduino CLI commands and give special treatment to operations listed in the `autoApprove` section.
+Once configured, the tool will automatically handle Arduino CLI commands, with special handling for operations listed in the `autoApprove` section.
 
 ## Arduino CLI MCP Server
 
-This is a Model Context Protocol server providing Arduino CLI capabilities. The server enables large language models to interact with Arduino boards, compile sketches, upload firmware, and manage libraries through natural language commands.
+This is a Model Context Protocol server that provides Arduino CLI functionality. The server enables large language models to interact with Arduino boards through natural language commands, compile sketches, upload firmware, and manage libraries.
 
 ### Available Tools
 
@@ -179,7 +129,7 @@ This is a Model Context Protocol server providing Arduino CLI capabilities. The 
   - Required parameters:
     - `sketch_path` (string): Path to the sketch file
     - `board_fqbn` (string): Fully qualified board name
-    - `port` (string): Port for uploading (e.g., '/dev/ttyACM0', 'COM3')
+    - `port` (string): Upload port (e.g., '/dev/ttyACM0', 'COM3')
 
 - `search_library` - Searches for Arduino libraries.
 
@@ -255,24 +205,17 @@ Response:
 
 ## Debugging
 
-You can use the MCP inspector tool to debug the server. For uvx installation:
+You can use the MCP inspector tool to debug the server:
 
 ```bash
-npx @modelcontextprotocol/inspector uvx arduino-cli-mcp
-```
-
-Or if you installed the package in a specific directory or are developing:
-
-```bash
-cd path/to/servers/src/arduino-cli
-npx @modelcontextprotocol/inspector uv run arduino-cli-mcp
+npx @modelcontextprotocol/inspector python -m arduino_cli_mcp
 ```
 
 ## Example Questions for Claude
 
 1. "What Arduino boards are currently connected to my computer?"
 2. "Compile my Blink sketch for Arduino Uno"
-3. "Upload my LED project to Arduino Mega on port COM5"
+3. "Upload my LED project to the Arduino Mega on COM5 port"
 4. "Can you search for libraries related to OLED displays?"
 5. "Install the Servo library for Arduino"
 
@@ -287,7 +230,7 @@ npx @modelcontextprotocol/inspector uv run arduino-cli-mcp
 
 ## Contributing
 
-We encourage you to contribute to arduino-cli-mcp to help expand and improve it. Whether you want to add new Arduino-related tools, enhance existing functionality, or improve the documentation, your input is valuable.
+We encourage you to contribute to arduino-cli-mcp to help expand and improve it. Whether you want to add new Arduino-related tools, enhance existing functionality, or improve documentation, your input is valuable.
 
 For examples of other MCP servers and implementation patterns, see:
 https://github.com/modelcontextprotocol/servers
@@ -304,4 +247,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-_For Chinese version, please refer to [README_zh.md](README_zh.md)_
+_For the Chinese version, please refer to [README.zh-tw.md](README.zh-tw.md)_
