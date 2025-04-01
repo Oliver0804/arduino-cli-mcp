@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arduino-cli-mcp"
-version = "0.1.4"
+version = "0.1.5"
 description = "Arduino CLI MCP Server for VSCode and GitHub Copilot integration - a LLM Machine Communication Protocol implementation"
 readme = "README.md"
 authors = [

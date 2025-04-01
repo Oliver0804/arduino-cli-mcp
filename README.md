@@ -114,60 +114,108 @@ This is a Model Context Protocol server that provides Arduino CLI functionality.
 
 ### Available Tools
 
-- `list_boards` - Lists all connected Arduino boards.
+- `compile`: Compile an Arduino sketch / 編譯 Arduino 草圖
+
+  - **Parameters:**
+    - `sketch_path` (string, required): Path to the .ino file / .ino 文件的路徑
+    - `fqbn` (string, required, default: 'arduino:avr:uno'): Fully Qualified Board Name (e.g. 'arduino:avr:uno') / 完整開發板名稱
+
+- `upload`: Upload an Arduino sketch or hex file to a board / 上傳 Arduino 草圖或 hex 檔案到開發板
+
+  - **Parameters:**
+    - `sketch_path` (string): Path to the .ino file / .ino 文件的路徑
+    - `hex_path` (string): Path to the hex file (optional, if provided will upload directly) / hex 檔案的絕對路徑（可選）
+    - `port` (string, required): Serial port of the board / 開發板的串口
+    - `fqbn` (string, required, default: 'arduino:avr:uno'): Fully Qualified Board Name / 完整開發板名稱
+
+- `install_board`: Install a board platform / 安裝開發板平台
+
+  - **Parameters:**
+    - `platform_id` (string, required): Platform ID (e.g. arduino:avr, esp32:esp32) / 平台 ID（如 arduino:avr, esp32:esp32）
+
+- `check`: Check Arduino CLI version / 檢查 Arduino CLI 版本
 
   - No parameters required
 
-- `compile_sketch` - Compiles an Arduino sketch.
+- `list`: List all available boards and platforms / 列出所有可用的開發板和平台
 
-  - Required parameters:
-    - `sketch_path` (string): Path to the sketch file
-    - `board_fqbn` (string): Fully qualified board name (e.g., 'arduino:avr:uno')
+  - No parameters required
 
-- `upload_sketch` - Uploads a compiled sketch to a board.
+- `install_library`: Install an Arduino library / 安裝 Arduino 函式庫
 
-  - Required parameters:
-    - `sketch_path` (string): Path to the sketch file
-    - `board_fqbn` (string): Fully qualified board name
-    - `port` (string): Upload port (e.g., '/dev/ttyACM0', 'COM3')
+  - **Parameters:**
+    - `library_name` (string, required): Name of the library to install / 要安裝的函式庫名稱
 
-- `search_library` - Searches for Arduino libraries.
+- `search_library`: Search for Arduino libraries / 搜尋 Arduino 函式庫
 
-  - Required parameters:
-    - `query` (string): Search term
+  - **Parameters:**
+    - `query` (string, required): Search query / 搜尋關鍵字
 
-- `install_library` - Installs an Arduino library.
+- `list_libraries`: List all installed Arduino libraries / 列出所有已安裝的 Arduino 函式庫
 
-  - Required parameters:
-    - `library_name` (string): Name of the library to install
+  - No parameters required
+
+- `uninstall_library`: Uninstall an Arduino library / 移除 Arduino 函式庫
+
+  - **Parameters:**
+    - `library_name` (string, required): Name of the library to uninstall / 要移除的函式庫名稱
+
+- `library_examples`: Get examples from an installed library / 獲取已安裝函式庫的範例
+
+  - **Parameters:**
+    - `library_name` (string, required): Name of the library / 函式庫名稱
+
+- `load_example`: Load a library example to the workspace / 載入函式庫範例到工作區
+
+  - **Parameters:**
+    - `library_name` (string, required): Name of the library / 函式庫名稱
+    - `example_name` (string, required): Name of the example / 範例名稱
+
+- `diagnose_error`: Diagnose compilation errors / 診斷編譯錯誤
+
+  - **Parameters:**
+    - `error_output` (string, required): Compilation error output / 編譯錯誤輸出
+
+- `auto_install_libs`: Automatically install libraries used in a sketch / 自動安裝草圖中使用的函式庫
+
+  - **Parameters:**
+    - `sketch_path` (string, required): Path to the .ino file / .ino 文件的路徑
+
+- `monitor`: Start serial monitor / 啟動串行監視器
+
+  - **Parameters:**
+    - `port` (string, required): Serial port / 串行端口
+    - `baud_rate` (integer, default: 9600): Baud rate / 波特率
+
+- `board_options`: Configure board options / 設定開發板選項
+  - **Parameters:**
+    - `fqbn` (string, required): Fully Qualified Board Name / 完整開發板名稱
+    - `options` (object, required): Board options as key-value pairs / 開發板選項
 
 ## Interaction Examples
 
-1. Listing connected boards:
+1. Listing available boards and platforms:
 
 ```json
 {
-  "name": "list_boards",
+  "name": "list",
   "arguments": {}
 }
 ```
 
-Response:
+Response (example):
 
 ```json
 {
-  "boards": [
+  "connected": [
     {
-      "port": "COM3",
+      "port": "/dev/ttyACM0",
       "fqbn": "arduino:avr:uno",
-      "name": "Arduino Uno"
-    },
-    {
-      "port": "COM4",
-      "fqbn": "arduino:avr:nano",
-      "name": "Arduino Nano"
+      "board_name": "Arduino Uno"
     }
-  ]
+  ],
+  "platforms": ["arduino:avr", "esp32:esp32"],
+  "all_boards": "Board Name              FQBN            Core             \nArduino Uno             arduino:avr:uno arduino:avr      \nArduino Mega or Mega 2560 arduino:avr:mega arduino:avr      \n..."
 }
 ```
 
@@ -175,31 +223,79 @@ Response:
 
 ```json
 {
-  "name": "compile_sketch",
+  "name": "compile",
   "arguments": {
-    "sketch_path": "/path/to/Blink.ino",
-    "board_fqbn": "arduino:avr:uno"
+    "sketch_path": "/path/to/Blink/Blink.ino",
+    "fqbn": "arduino:avr:uno"
   }
 }
 ```
 
-Response:
+Response (example):
 
 ```json
 {
   "success": true,
-  "output": "Sketch uses 924 bytes (2%) of program storage space. Maximum is 32256 bytes.",
-  "binary_path": "/path/to/build/arduino.avr.uno/Blink.ino.hex"
+  "build_dir": "/path/to/Blink/build",
+  "hex_path": "/path/to/Blink/build/Blink.ino.hex",
+  "error": "",
+  "error_code": 0
 }
 ```
 
-3. Error response example:
+3. Uploading a sketch:
 
 ```json
 {
-  "error": true,
-  "message": "Compilation failed: Syntax error on line 5",
-  "details": "Missing semicolon at the end of statement"
+  "name": "upload",
+  "arguments": {
+    "sketch_path": "/path/to/Blink/Blink.ino",
+    "port": "/dev/ttyACM0",
+    "fqbn": "arduino:avr:uno"
+  }
+}
+```
+
+Response (example):
+
+```json
+{
+  "success": true,
+  "command": "arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno /path/to/Blink",
+  "error": ""
+}
+```
+
+4. Installing a library:
+
+```json
+{
+  "name": "install_library",
+  "arguments": {
+    "library_name": "Servo"
+  }
+}
+```
+
+Response (example):
+
+```json
+{
+  "success": true,
+  "message": "Successfully installed Servo@1.2.1",
+  "command": "arduino-cli lib install \"Servo\""
+}
+```
+
+5. Error response example (compilation):
+
+```json
+{
+  "success": false,
+  "build_dir": "/path/to/ErrorSketch/build",
+  "hex_path": "",
+  "error": "Compilation failed: exit status 1\n/path/to/ErrorSketch/ErrorSketch.ino:5:1: error: expected ';' before '}' token\n }",
+  "error_code": 1
 }
 ```
 
@@ -213,20 +309,27 @@ npx @modelcontextprotocol/inspector python -m arduino_cli_mcp
 
 ## Example Questions for Claude
 
-1. "What Arduino boards are currently connected to my computer?"
-2. "Compile my Blink sketch for Arduino Uno"
-3. "Upload my LED project to the Arduino Mega on COM5 port"
-4. "Can you search for libraries related to OLED displays?"
-5. "Install the Servo library for Arduino"
+1. "列出所有可用的 Arduino 開發板和平台" (List all available Arduino boards and platforms)
+2. "幫我編譯 Blink 草圖，目標是 Arduino Uno" (Compile my Blink sketch for Arduino Uno)
+3. "將我的 LED 專案上傳到連接在 /dev/ttyACM0 的 Arduino Mega" (Upload my LED project to the Arduino Mega on /dev/ttyACM0)
+4. "搜尋關於 OLED 顯示器的函式庫" (Search for libraries related to OLED displays)
+5. "安裝 Servo 函式庫" (Install the Servo library)
+6. "列出所有已安裝的函式庫" (List all installed libraries)
+7. "啟動 /dev/ttyACM0 的串行監視器" (Start the serial monitor for /dev/ttyACM0)
 
 ## Features
 
-- Compile Arduino sketches
-- Upload sketches to Arduino boards
-- Install Arduino platforms
-- List available boards and platforms
-- Create and manage Arduino projects
-- Search and install libraries
+- Compile Arduino sketches / 編譯 Arduino 草圖
+- Upload sketches or hex files to Arduino boards / 上傳草圖或 hex 檔案到 Arduino 開發板
+- Install Arduino platforms / 安裝 Arduino 平台
+- Check Arduino CLI version / 檢查 Arduino CLI 版本
+- List available boards and platforms / 列出可用的開發板和平台
+- Search, install, list, and uninstall Arduino libraries / 搜尋、安裝、列出和移除 Arduino 函式庫
+- List and load library examples / 列出和載入函式庫範例
+- Diagnose compilation errors / 診斷編譯錯誤
+- Automatically install missing libraries for a sketch / 自動安裝草圖所需的函式庫
+- Start serial monitor / 啟動串行監視器
+- Configure board options / 設定開發板選項
 
 ## Contributing
 
