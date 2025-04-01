@@ -41,7 +41,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="arduino-cli-mcp",
-    version="0.1.3",
+    version="0.1.4",
     author="Oliver",
     author_email="icetzsr@gmail.com",
     description="Arduino CLI MCP Server for GitHub Copilot integration",

@@ -386,28 +386,32 @@ class ArduinoCliServer:
         )
     
     def upload_sketch(self, sketch_path: str, port: str, fqbn: str = "") -> UploadResult:
-        """Upload sketch to board on specified port"""
-        # Make sure sketch_path is absolute or correctly relative to current directory
-        sketch_path = os.path.normpath(sketch_path)
-        if not os.path.isabs(sketch_path):
-            sketch_path = os.path.join(os.getcwd(), sketch_path)
-            
-        if not os.path.exists(sketch_path):
-            return UploadResult(
-                sketch=sketch_path,
-                port=port,
-                fqbn=fqbn,
-                success=False,
-                output="",
-                error=f"Sketch file not found: {sketch_path}"
-            )
-        
-        upload_cmd = f"upload -p {port} {sketch_path}"
-        if fqbn:
-            upload_cmd += f" --fqbn {fqbn}"
-        
-        result = self.execute_cli_command(upload_cmd)
-        
+        """Compile and upload sketch to Arduino board."""
+        sketch_dir = sketch_path
+
+        # If the provided path is a .ino file, get its directory
+        if sketch_path.endswith(".ino"):
+            sketch_dir = os.path.dirname(sketch_path)
+
+        # Ensure FQBN is provided or detected
+        if not fqbn:
+            boards = self.list_boards()
+            if boards and boards[0].fqbn:
+                fqbn = boards[0].fqbn
+            else:
+                return UploadResult(
+                    sketch=sketch_path,
+                    port=port,
+                    fqbn="",
+                    success=False,
+                    output="",
+                    error="No FQBN specified and could not detect board"
+                )
+
+        # Use a single command to compile and upload
+        command = f"compile -u -p {port} --fqbn {fqbn} \"{sketch_dir}\""
+        result = self.execute_cli_command(command)
+
         return UploadResult(
             sketch=sketch_path,
             port=port,
@@ -1025,7 +1029,214 @@ void loop() {{
         """卸載 Arduino 函式庫"""
         uninstall_cmd = f"lib uninstall \"{library_name}\""
         return self.execute_cli_command(uninstall_cmd)
-    
+
+    def get_library_examples(self, library_name: str) -> List[str]:
+        """獲取函式庫中的範例清單"""
+        try:
+            # 執行指令查找函式庫位置
+            library_cmd = f"lib list \"{library_name}\" --format json"
+            result = self.execute_cli_command(library_cmd)
+            
+            if not result.success:
+                return []
+                
+            # 解析 JSON 輸出
+            libraries = json.loads(result.output)
+            if not libraries:
+                return []
+                
+            # 獲取函式庫路徑
+            library_path = libraries[0].get("install_dir", "")
+            if not library_path:
+                return []
+                
+            # 查找範例目錄
+            examples_path = os.path.join(library_path, "examples")
+            if not os.path.exists(examples_path):
+                return []
+                
+            # 收集所有範例
+            examples = []
+            for root, _, files in os.walk(examples_path):
+                for file in files:
+                    if file.endswith(".ino"):
+                        examples.append(os.path.join(root, file))
+                        
+            return examples
+        except Exception as e:
+            print(f"Error getting library examples: {str(e)}")
+            return []
+   
+    def load_library_example(self, library_name: str, example_name: str) -> FileContent:
+        """加載函式庫範例到工作目錄"""
+        try:
+            examples = self.get_library_examples(library_name)
+            
+            # 查找匹配的範例
+            target_example = None
+            for example in examples:
+                if example_name in example:
+                    target_example = example
+                    break
+                    
+            if not target_example:
+                return FileContent(
+                    filepath="",
+                    content="",
+                    exists=False
+                )
+                
+            # 讀取範例內容
+            with open(target_example, 'r') as f:
+                content = f.read()
+                
+            # 創建草圖
+            sketch_name = os.path.basename(os.path.dirname(target_example))
+            return self.create_sketch(sketch_name, content)
+        except Exception as e:
+            print(f"Error loading library example: {str(e)}")
+            return FileContent(
+                filepath="",
+                content="",
+                exists=False
+            )
+
+    def diagnose_compile_error(self, error_output: str) -> Dict:
+        """分析編譯錯誤並提供診斷信息"""
+        diagnosis = {
+            "error_type": "unknown",
+            "suggestions": [],
+            "missing_libraries": [],
+            "syntax_errors": []
+        }
+        
+        if not error_output:
+            return diagnosis
+            
+        # 檢測常見錯誤類型
+        if "No such file or directory" in error_output:
+            diagnosis["error_type"] = "missing_include"
+            # 嘗試提取缺少的頭文件
+            matches = re.findall(r'No such file or directory[\s\S]*?[<"]([^>"]+)[>"]', error_output)
+            if matches:
+                diagnosis["missing_libraries"] = matches
+                for lib in matches:
+                    lib_name = lib.split(".")[0]
+                    diagnosis["suggestions"].append(f"嘗試安裝 '{lib_name}' 函式庫")
+        
+        elif "undefined reference to" in error_output:
+            diagnosis["error_type"] = "undefined_reference"
+            matches = re.findall(r'undefined reference to [`\']([^\'`]+)[`\']', error_output)
+            if matches:
+                diagnosis["suggestions"].append("確保所有使用的函數都已定義")
+                diagnosis["suggestions"].append("檢查函數名稱是否拼寫正確")
+        
+        elif "expected" in error_output and "before" in error_output:
+            diagnosis["error_type"] = "syntax_error"
+            # 提取語法錯誤
+            matches = re.findall(r'expected [^\n]+ before [^\n]+', error_output)
+            if matches:
+                diagnosis["syntax_errors"] = matches
+                diagnosis["suggestions"].append("檢查括號、分號或語法錯誤")
+        
+        return diagnosis
+
+    def auto_install_missing_libraries(self, sketch_path: str) -> Dict:
+        """分析草圖並自動安裝缺少的函式庫"""
+        try:
+            # 讀取草圖內容
+            with open(sketch_path, 'r') as f:
+                content = f.read()
+                
+            # 提取所有 #include
+            includes = re.findall(r'#include\s+[<"]([^>"]+)[>"]', content)
+            
+            installed_count = 0
+            failed_count = 0
+            already_installed = 0
+            results = {}
+            
+            # 獲取已安裝函式庫列表
+            list_result = self.list_installed_libraries()
+            installed_libs = []
+            try:
+                if list_result.success and list_result.output:
+                    libs_data = json.loads(list_result.output)
+                    installed_libs = [lib.get("name", "").lower() for lib in libs_data]
+            except:
+                pass
+            
+            # 嘗試為每個 include 安裝函式庫
+            for include in includes:
+                # 跳過標準庫
+                if include in ['Arduino.h', 'stdlib.h', 'stdio.h', 'string.h', 'math.h']:
+                    continue
+                    
+                lib_name = include.split('.')[0]  # 從文件名提取函式庫名稱
+                
+                # 如果已安裝則跳過
+                if lib_name.lower() in [l.lower() for l in installed_libs]:
+                    already_installed += 1
+                    continue
+                
+                # 嘗試安裝
+                result = self.install_library(lib_name)
+                results[lib_name] = result.success
+                
+                if result.success:
+                    installed_count += 1
+                else:
+                    failed_count += 1
+            
+            return {
+                "success": True,
+                "installed": installed_count,
+                "failed": failed_count,
+                "already_installed": already_installed,
+                "details": results
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def start_monitor(self, port: str, baud_rate: int = 9600) -> Dict:
+        """啟動串行監控器並返回實時輸出"""
+        try:
+            # 創建啟動監控的命令
+            monitor_cmd = f"arduino-cli monitor -p {port} -c baudrate={baud_rate}"
+            
+            # 返回啟動命令，讓客戶端可以直接執行
+            return {
+                "success": True,
+                "command": monitor_cmd,
+                "message": f"使用此命令在終端中啟動監控: {monitor_cmd}",
+                "port": port,
+                "baud_rate": baud_rate
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def set_board_options(self, fqbn: str, options: Dict[str, str]) -> ArduinoCommandResult:
+        """設置開發板的配置選項"""
+        # 構建命令，格式如: arduino:avr:nano:cpu=atmega328
+        extended_fqbn = fqbn
+        if options:
+            option_strings = []
+            for key, value in options.items():
+                option_strings.append(f"{key}={value}")
+            
+            if option_strings:
+                extended_fqbn += ":" + ":".join(option_strings)
+        
+        # 執行一個簡單命令來測試配置
+        test_cmd = f"board details --fqbn \"{extended_fqbn}\""
+        return self.execute_cli_command(test_cmd)
+
 async def serve(workdir=None) -> None:
     server = Server("arduino-cli-mcp")
     # Initialize with workdir
@@ -1194,6 +1405,109 @@ async def serve(workdir=None) -> None:
                     "required": ["library_name"]
                 },
             ),
+
+            Tool(
+                name="library_examples",
+                description="Get examples from an installed library / 獲取已安裝函式庫的範例",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "library_name": {
+                            "type": "string",
+                            "description": "Name of the library / 函式庫名稱"
+                        }
+                    },
+                    "required": ["library_name"]
+                }
+            ),
+            
+            Tool(
+                name="load_example",
+                description="Load a library example to the workspace / 載入函式庫範例到工作區",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "library_name": {
+                            "type": "string",
+                            "description": "Name of the library / 函式庫名稱"
+                        },
+                        "example_name": {
+                            "type": "string",
+                            "description": "Name of the example / 範例名稱"
+                        }
+                    },
+                    "required": ["library_name", "example_name"]
+                }
+            ),
+            
+            Tool(
+                name="diagnose_error",
+                description="Diagnose compilation errors / 診斷編譯錯誤",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "error_output": {
+                            "type": "string",
+                            "description": "Compilation error output / 編譯錯誤輸出"
+                        }
+                    },
+                    "required": ["error_output"]
+                }
+            ),
+            
+            Tool(
+                name="auto_install_libs",
+                description="Automatically install libraries used in a sketch / 自動安裝草圖中使用的函式庫",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "sketch_path": {
+                            "type": "string",
+                            "description": "Path to the .ino file / .ino文件的路徑"
+                        }
+                    },
+                    "required": ["sketch_path"]
+                }
+            ),
+            
+            Tool(
+                name="monitor",
+                description="Start serial monitor / 啟動串行監視器",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "port": {
+                            "type": "string",
+                            "description": "Serial port / 串行端口"
+                        },
+                        "baud_rate": {
+                            "type": "integer",
+                            "description": "Baud rate / 波特率",
+                            "default": 9600
+                        }
+                    },
+                    "required": ["port"]
+                }
+            ),
+            
+            Tool(
+                name="board_options",
+                description="Configure board options / 設定開發板選項",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "fqbn": {
+                            "type": "string",
+                            "description": "Fully Qualified Board Name / 完整開發板名稱"
+                        },
+                        "options": {
+                            "type": "object",
+                            "description": "Board options as key-value pairs / 開發板選項"
+                        }
+                    },
+                    "required": ["fqbn", "options"]
+                }
+            )
         ]
 
     @server.call_tool()
@@ -1365,6 +1679,86 @@ async def serve(workdir=None) -> None:
                         "success": result.success,
                         "message": result.output if result.success else result.error,
                         "command": result.command
+                    }, indent=2))
+                ]
+
+            elif name == "library_examples":
+                library_name = arguments.get("library_name")
+                
+                if not library_name:
+                    raise ValueError("Missing required parameter: library_name")
+                
+                examples = arduino_server.get_library_examples(library_name)
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": True,
+                        "examples": examples
+                    }, indent=2))
+                ]
+                
+            elif name == "load_example":
+                library_name = arguments.get("library_name")
+                example_name = arguments.get("example_name")
+                
+                if not library_name or not example_name:
+                    raise ValueError("Missing required parameters")
+                
+                result = arduino_server.load_library_example(library_name, example_name)
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.exists,
+                        "filepath": result.filepath,
+                        "content": result.content
+                    }, indent=2))
+                ]
+                
+            elif name == "diagnose_error":
+                error_output = arguments.get("error_output")
+                
+                if not error_output:
+                    raise ValueError("Missing required parameter: error_output")
+                
+                diagnosis = arduino_server.diagnose_compile_error(error_output)
+                return [
+                    TextContent(type="text", text=json.dumps(diagnosis, indent=2))
+                ]
+                
+            elif name == "auto_install_libs":
+                sketch_path = arguments.get("sketch_path")
+                
+                if not sketch_path:
+                    raise ValueError("Missing required parameter: sketch_path")
+                
+                result = arduino_server.auto_install_missing_libraries(sketch_path)
+                return [
+                    TextContent(type="text", text=json.dumps(result, indent=2))
+                ]
+                
+            elif name == "monitor":
+                port = arguments.get("port")
+                baud_rate = arguments.get("baud_rate", 9600)
+                
+                if not port:
+                    raise ValueError("Missing required parameter: port")
+                
+                result = arduino_server.start_monitor(port, baud_rate)
+                return [
+                    TextContent(type="text", text=json.dumps(result, indent=2))
+                ]
+                
+            elif name == "board_options":
+                fqbn = arguments.get("fqbn")
+                options = arguments.get("options", {})
+                
+                if not fqbn:
+                    raise ValueError("Missing required parameter: fqbn")
+                
+                result = arduino_server.set_board_options(fqbn, options)
+                return [
+                    TextContent(type="text", text=json.dumps({
+                        "success": result.success,
+                        "message": result.output if result.success else result.error,
+                        "extended_fqbn": fqbn + ":" + ":".join([f"{k}={v}" for k, v in options.items()]) if options else fqbn
                     }, indent=2))
                 ]
 
