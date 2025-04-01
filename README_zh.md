@@ -114,59 +114,108 @@ arduino-cli-mcp --workdir /path/to/your/arduino/projects
 
 ### 可用工具
 
-- `list_boards` - 列出所有已連接的 Arduino 開發板。
+- `compile`: 編譯 Arduino 草圖
+
+  - **參數:**
+    - `sketch_path` (字串, 必要): .ino 檔案的路徑
+    - `fqbn` (字串, 必要, 預設: 'arduino:avr:uno'): 完整開發板名稱 (例如 'arduino:avr:uno')
+
+- `upload`: 上傳 Arduino 草圖或 hex 檔案到開發板
+
+  - **參數:**
+    - `sketch_path` (字串): .ino 檔案的路徑
+    - `hex_path` (字串): hex 檔案的絕對路徑（可選，若提供則直接上傳）
+    - `port` (字串, 必要): 開發板的串口
+    - `fqbn` (字串, 必要, 預設: 'arduino:avr:uno'): 完整開發板名稱
+
+- `install_board`: 安裝開發板平台
+
+  - **參數:**
+    - `platform_id` (字串, 必要): 平台 ID（例如 arduino:avr, esp32:esp32）
+
+- `check`: 檢查 Arduino CLI 版本
 
   - 不需要參數
 
-- `compile_sketch` - 編譯 Arduino 草圖。
+- `list`: 列出所有可用的開發板和平台
 
-  - 必要參數：
-    - `sketch_path` (字串)：草圖檔案路徑
-    - `board_fqbn` (字串)：完整合格板名稱（例如 'arduino:avr:uno'）
+  - 不需要參數
 
-- `upload_sketch` - 上傳已編譯的草圖到開發板。
+- `install_library`: 安裝 Arduino 函式庫
 
-  - 必要參數：
-    - `sketch_path` (字串)：草圖檔案路徑
-    - `board_fqbn` (字串)：完整合格板名稱
-    - `port` (字串)：用於上傳的埠（例如 '/dev/ttyACM0'、'COM3'）
+  - **參數:**
+    - `library_name` (字串, 必要): 要安裝的函式庫名稱
 
-- `search_library` - 搜尋 Arduino 函式庫。
+- `search_library`: 搜尋 Arduino 函式庫
 
-  - 必要參數：
-    - `query` (字串)：搜尋詞彙
+  - **參數:**
+    - `query` (字串, 必要): 搜尋關鍵字
 
-- `install_library` - 安裝 Arduino 函式庫。
-  - 必要參數：
-    - `library_name` (字串)：要安裝的函式庫名稱
+- `list_libraries`: 列出所有已安裝的 Arduino 函式庫
+
+  - 不需要參數
+
+- `uninstall_library`: 移除 Arduino 函式庫
+
+  - **參數:**
+    - `library_name` (字串, 必要): 要移除的函式庫名稱
+
+- `library_examples`: 獲取已安裝函式庫的範例
+
+  - **參數:**
+    - `library_name` (字串, 必要): 函式庫名稱
+
+- `load_example`: 載入函式庫範例到工作區
+
+  - **參數:**
+    - `library_name` (字串, 必要): 函式庫名稱
+    - `example_name` (字串, 必要): 範例名稱
+
+- `diagnose_error`: 診斷編譯錯誤
+
+  - **參數:**
+    - `error_output` (字串, 必要): 編譯錯誤輸出
+
+- `auto_install_libs`: 自動安裝草圖中使用的函式庫
+
+  - **參數:**
+    - `sketch_path` (字串, 必要): .ino 檔案的路徑
+
+- `monitor`: 啟動串行監視器
+
+  - **參數:**
+    - `port` (字串, 必要): 串行端口
+    - `baud_rate` (整數, 預設: 9600): 波特率
+
+- `board_options`: 設定開發板選項
+  - **參數:**
+    - `fqbn` (字串, 必要): 完整開發板名稱
+    - `options` (物件, 必要): 開發板選項 (鍵值對)
 
 ## 互動範例
 
-1. 列出已連接的開發板：
+1. 列出可用的開發板和平台：
 
 ```json
 {
-  "name": "list_boards",
+  "name": "list",
   "arguments": {}
 }
 ```
 
-回應：
+回應 (範例):
 
 ```json
 {
-  "boards": [
+  "connected": [
     {
-      "port": "COM3",
+      "port": "/dev/ttyACM0",
       "fqbn": "arduino:avr:uno",
-      "name": "Arduino Uno"
-    },
-    {
-      "port": "COM4",
-      "fqbn": "arduino:avr:nano",
-      "name": "Arduino Nano"
+      "board_name": "Arduino Uno"
     }
-  ]
+  ],
+  "platforms": ["arduino:avr", "esp32:esp32"],
+  "all_boards": "Board Name              FQBN            Core             \nArduino Uno             arduino:avr:uno arduino:avr      \nArduino Mega or Mega 2560 arduino:avr:mega arduino:avr      \n..."
 }
 ```
 
@@ -174,31 +223,79 @@ arduino-cli-mcp --workdir /path/to/your/arduino/projects
 
 ```json
 {
-  "name": "compile_sketch",
+  "name": "compile",
   "arguments": {
-    "sketch_path": "/path/to/Blink.ino",
-    "board_fqbn": "arduino:avr:uno"
+    "sketch_path": "/path/to/Blink/Blink.ino",
+    "fqbn": "arduino:avr:uno"
   }
 }
 ```
 
-回應：
+回應 (範例):
 
 ```json
 {
   "success": true,
-  "output": "Sketch uses 924 bytes (2%) of program storage space. Maximum is 32256 bytes.",
-  "binary_path": "/path/to/build/arduino.avr.uno/Blink.ino.hex"
+  "build_dir": "/path/to/Blink/build",
+  "hex_path": "/path/to/Blink/build/Blink.ino.hex",
+  "error": "",
+  "error_code": 0
 }
 ```
 
-3. 錯誤回應範例：
+3. 上傳草圖：
 
 ```json
 {
-  "error": true,
-  "message": "編譯失敗：第5行有語法錯誤",
-  "details": "語句結尾缺少分號"
+  "name": "upload",
+  "arguments": {
+    "sketch_path": "/path/to/Blink/Blink.ino",
+    "port": "/dev/ttyACM0",
+    "fqbn": "arduino:avr:uno"
+  }
+}
+```
+
+回應 (範例):
+
+```json
+{
+  "success": true,
+  "command": "arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno /path/to/Blink",
+  "error": ""
+}
+```
+
+4. 安裝函式庫：
+
+```json
+{
+  "name": "install_library",
+  "arguments": {
+    "library_name": "Servo"
+  }
+}
+```
+
+回應 (範例):
+
+```json
+{
+  "success": true,
+  "message": "Successfully installed Servo@1.2.1",
+  "command": "arduino-cli lib install \"Servo\""
+}
+```
+
+5. 錯誤回應範例 (編譯)：
+
+```json
+{
+  "success": false,
+  "build_dir": "/path/to/ErrorSketch/build",
+  "hex_path": "",
+  "error": "Compilation failed: exit status 1\n/path/to/ErrorSketch/ErrorSketch.ino:5:1: error: expected ';' before '}' token\n }",
+  "error_code": 1
 }
 ```
 
@@ -212,20 +309,27 @@ npx @modelcontextprotocol/inspector python -m arduino_cli_mcp
 
 ## Claude 問題範例
 
-1. "哪些 Arduino 開發板目前連接到我的電腦？"
-2. "為 Arduino Uno 編譯我的 Blink 草圖"
-3. "將我的 LED 專案上傳到 COM5 埠上的 Arduino Mega"
-4. "你能搜尋與 OLED 顯示器相關的函式庫嗎？"
-5. "為 Arduino 安裝 Servo 函式庫"
+1. "列出所有可用的 Arduino 開發板和平台"
+2. "幫我編譯 Blink 草圖，目標是 Arduino Uno"
+3. "將我的 LED 專案上傳到連接在 /dev/ttyACM0 的 Arduino Mega"
+4. "搜尋關於 OLED 顯示器的函式庫"
+5. "安裝 Servo 函式庫"
+6. "列出所有已安裝的函式庫"
+7. "啟動 /dev/ttyACM0 的串行監視器"
 
 ## 功能
 
 - 編譯 Arduino 草圖
-- 上傳草圖到 Arduino 板
+- 上傳草圖或 hex 檔案到 Arduino 開發板
 - 安裝 Arduino 平台
-- 列出可用的板和平台
-- 創建和管理 Arduino 項目
-- 搜索和安裝庫
+- 檢查 Arduino CLI 版本
+- 列出可用的開發板和平台
+- 搜尋、安裝、列出和移除 Arduino 函式庫
+- 列出和載入函式庫範例
+- 診斷編譯錯誤
+- 自動安裝草圖所需的函式庫
+- 啟動串行監視器
+- 設定開發板選項
 
 ## 貢獻
 
