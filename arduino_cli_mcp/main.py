@@ -1,17 +1,19 @@
 from typing import Sequence, Dict, Optional, List
 import json
+import logging
 import subprocess
 import shlex
 import os
-import tempfile
 import re
+import tempfile
 import argparse
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
-from mcp.shared.exceptions import McpError
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("arduino_cli_mcp")
 
 class ArduinoCommandResult(BaseModel):
     command: str
@@ -81,9 +83,9 @@ class ArduinoCliServer:
             try:
                 os.makedirs(self.workdir)
             except Exception as e:
-                print(f"Warning: Could not create workdir: {e}")
-        print(f"Arduino CLI output directory: {self.output_dir}")
-        print(f"Arduino CLI working directory: {self.workdir}")
+                logger.warning(f"Could not create workdir: {e}")
+        logger.info(f"Arduino CLI output directory: {self.output_dir}")
+        logger.info(f"Arduino CLI working directory: {self.workdir}")
 
     def save_command_result(self, command: str, result: ArduinoCommandResult) -> None:
         """Save command execution result"""
@@ -109,7 +111,7 @@ class ArduinoCliServer:
                     data = json.load(f)
                     return ArduinoCommandResult(**data)
             except Exception as e:
-                print(f"Error reading command result: {str(e)}")
+                logger.error(f"Error reading command result: {e}")
         
         return None
     
@@ -144,7 +146,7 @@ class ArduinoCliServer:
             args = shlex.split(full_command)
             
             # Log the command being executed
-            print(f"Executing command: {full_command}")
+            logger.info(f"Executing command: {full_command}")
             
             # Set environment variables, ensure $HOME is defined
             command_env = os.environ.copy()
@@ -169,9 +171,9 @@ class ArduinoCliServer:
                     try:
                         os.makedirs(temp_dir, exist_ok=True)
                         os.chmod(temp_dir, 0o755)  # Ensure directory has proper permissions
-                        print(f"Created temp directory: {temp_dir}")
+                        logger.info(f"Created temp directory: {temp_dir}")
                     except Exception as e:
-                        print(f"Warning: Could not create temp directory {temp_dir}: {e}")
+                        logger.warning(f"Could not create temp directory {temp_dir}: {e}")
             
             # Use the first available temp directory
             for temp_dir in temp_dirs:
@@ -180,7 +182,7 @@ class ArduinoCliServer:
                     command_env['TMPDIR'] = temp_dir
                     command_env['TMP'] = temp_dir
                     command_env['TEMP'] = temp_dir
-                    print(f"Setting TMPDIR to: {temp_dir}")
+                    logger.info(f"Setting TMPDIR to: {temp_dir}")
                     break
             
             # Add explicit build path for compile commands
@@ -192,7 +194,7 @@ class ArduinoCliServer:
                 if "--build-path" not in command:
                     command = f"{command} --build-path \"{build_dir}\""
                     args = shlex.split(f"arduino-cli {command}")
-                    print(f"Added build path: {build_dir} to command")
+                    logger.info(f"Added build path: {build_dir} to command")
             
             # Execute with up to 3 retries for resiliency
             max_retries = 3
@@ -209,7 +211,7 @@ class ArduinoCliServer:
                     )
                     
                     success = (result.returncode == 0)
-                    print(f"Command executed with return code: {result.returncode} (success: {success})")
+                    logger.info(f"Command executed with return code: {result.returncode} (success: {success})")
                     
                     # If successful or if it's not a temporary file error, break the loop
                     if success or "temporary file" not in result.stderr:
@@ -217,18 +219,18 @@ class ArduinoCliServer:
                     
                     # Otherwise retry with a different approach
                     retry_count += 1
-                    print(f"Retrying command (attempt {retry_count}/{max_retries})")
+                    logger.info(f"Retrying command (attempt {retry_count}/{max_retries})")
                     
                     if "ctags" in result.stderr:
                         # For ctags errors, try a direct approach
-                        print("Detected ctags error, trying direct compilation...")
+                        logger.info("Detected ctags error, trying direct compilation...")
                         # Skip ctags by using --no-color flag which changes CLI behavior
                         if "--no-color" not in command:
                             command = f"{command} --no-color"
                             args = shlex.split(f"arduino-cli {command}")
                     
                 except Exception as e:
-                    print(f"Error during command execution: {str(e)}")
+                    logger.error(f"Error during command execution: {e}")
                     retry_count += 1
                     if retry_count >= max_retries:
                         raise
@@ -241,7 +243,7 @@ class ArduinoCliServer:
             )
         except Exception as e:
             error_message = f"Error executing command: {str(e)}"
-            print(error_message)
+            logger.error(error_message)
             return ArduinoCommandResult(
                 command=f"arduino-cli {command}",
                 success=False,
@@ -295,8 +297,8 @@ class ArduinoCliServer:
                     output="",
                     error="Sketch file is empty"
                 )
-            print(f"Compiling sketch: {sketch_path} with content length: {len(sketch_content)}")
-            print(f"Sketch content (first 100 chars): {sketch_content[:100]}")
+            logger.info(f"Compiling sketch: {sketch_path} with content length: {len(sketch_content)}")
+            logger.info(f"Sketch content (first 100 chars): {sketch_content[:100]}")
         except Exception as e:
             return CompileResult(
                 sketch=sketch_path,
@@ -314,11 +316,11 @@ class ArduinoCliServer:
         # Try to use compile command with stored result first
         try:
             # Create a "safe" command that might have been stored
-            simple_cmd = f"compile -b {fqbn} {os.path.basename(os.path.dirname(sketch_path))}"
+            simple_cmd = f"compile -b {shlex.quote(fqbn)} {shlex.quote(os.path.basename(os.path.dirname(sketch_path)))}"
             stored_result = self.get_command_result(simple_cmd)
             
             if stored_result and stored_result.success:
-                print(f"Using stored successful compilation result for {sketch_name}")
+                logger.info(f"Using stored successful compilation result for {sketch_name}")
                 return CompileResult(
                     sketch=sketch_path,
                     success=True,
@@ -327,19 +329,19 @@ class ArduinoCliServer:
                     binary_path=""  # We don't know the binary path from stored result
                 )
         except Exception as e:
-            print(f"Error checking stored results: {e}")
+            logger.warning(f"Error checking stored results: {e}")
         
         # Create a build directory in the sketch's folder too
         sketch_dir = os.path.dirname(sketch_path)
         sketch_build_path = os.path.join(sketch_dir, "build")
         if not os.path.exists(sketch_build_path):
             os.makedirs(sketch_build_path, exist_ok=True)
-            print(f"Created build directory in sketch folder: {sketch_build_path}")
+            logger.info(f"Created build directory in sketch folder: {sketch_build_path}")
         
         # Proceed with regular compilation
-        compile_cmd = f"compile {sketch_path}"
+        compile_cmd = f"compile {shlex.quote(sketch_path)}"
         if fqbn:
-            compile_cmd += f" --fqbn {fqbn}"
+            compile_cmd += f" --fqbn {shlex.quote(fqbn)}"
         
         # Add build path and verbose flag to command
         compile_cmd += f" --build-path {sketch_build_path} -v"
@@ -354,14 +356,14 @@ class ArduinoCliServer:
         result = self.execute_cli_command(compile_cmd, env)
         
         # Log the compile result for debugging
-        print(f"Compilation result: success={result.success}")
+        logger.info(f"Compilation result: success={result.success}")
         if not result.success:
-            print(f"Error: {result.error}")
-            print(f"Output: {result.output}")
+            logger.error(f"Error: {result.error}")
+            logger.info(f"Output: {result.output}")
             
             # If compilation failed due to temporary file issues but we have stored result
             if "temporary file" in result.error and stored_result and stored_result.success:
-                print("Using stored successful result despite temporary file error")
+                logger.info("Using stored successful result despite temporary file error")
                 return CompileResult(
                     sketch=sketch_path,
                     success=True,
@@ -409,7 +411,7 @@ class ArduinoCliServer:
                 )
 
         # Use a single command to compile and upload
-        command = f"compile -u -p {port} --fqbn {fqbn} \"{sketch_dir}\""
+        command = f"compile -u -p {shlex.quote(port)} --fqbn {shlex.quote(fqbn)} {shlex.quote(sketch_dir)}"
         result = self.execute_cli_command(command)
 
         return UploadResult(
@@ -424,7 +426,7 @@ class ArduinoCliServer:
     def monitor_port(self, port: str, baud_rate: int = 9600, timeout: int = 10) -> MonitorResult:
         """Monitor serial port (in real-world usage should be an interactive process)"""
         # Note: This is just a simulation, real serial monitoring should be a long-running process
-        monitor_cmd = f"monitor -p {port} -c baudrate={baud_rate} --timeout {timeout}"
+        monitor_cmd = f"monitor -p {shlex.quote(port)} -c baudrate={baud_rate} --timeout {timeout}"
         
         result = self.execute_cli_command(monitor_cmd)
         
@@ -445,22 +447,22 @@ class ArduinoCliServer:
             # Create sketch directory if doesn't exist
             if not os.path.exists(sketch_dir):
                 os.makedirs(sketch_dir)
-                print(f"Created sketch directory: {sketch_dir}")
+                logger.info(f"Created sketch directory: {sketch_dir}")
             
             # Write sketch file
             with open(sketch_file, 'w') as f:
                 f.write(code)
-                print(f"Wrote {len(code)} bytes to {sketch_file}")
+                logger.info(f"Wrote {len(code)} bytes to {sketch_file}")
             
             # Verify that the file was created and has content
             if os.path.exists(sketch_file):
                 with open(sketch_file, 'r') as f:
                     content = f.read()
-                    print(f"Verified file content: {len(content)} bytes")
+                    logger.info(f"Verified file content: {len(content)} bytes")
                     if not content:
-                        print("WARNING: Created file is empty!")
+                        logger.warning("Created file is empty!")
             else:
-                print(f"WARNING: File {sketch_file} was not created!")
+                logger.warning(f"File {sketch_file} was not created!")
             
             # Return full path to help with future operations
             return FileContent(
@@ -470,7 +472,7 @@ class ArduinoCliServer:
             )
         except Exception as e:
             error_msg = f"Error creating sketch: {str(e)}"
-            print(error_msg)
+            logger.error(error_msg)
             raise ValueError(error_msg)
     
     def read_file(self, filepath: str) -> FileContent:
@@ -539,7 +541,7 @@ class ArduinoCliServer:
     
     def install_platform(self, platform_id: str) -> ArduinoCommandResult:
         """Install Arduino platform"""
-        return self.execute_cli_command(f"core install {platform_id}")
+        return self.execute_cli_command(f"core install {shlex.quote(platform_id)}")
 
     def create_blink_sketch(self, led_pin: int = 13, delay_ms: int = 1000) -> str:
         """Create a simple LED blink sketch with customizable pin and delay"""
@@ -578,7 +580,7 @@ void loop() {{
             platform_id = fqbn.split(':')[0] + ':' + fqbn.split(':')[1]  # Extract arduino:avr from arduino:avr:mega
             
             if platform_id not in platforms:
-                print(f"Platform {platform_id} not found, installing...")
+                logger.info(f"Platform {platform_id} not found, installing...")
                 install_result = self.install_platform(platform_id)
                 if not install_result.success:
                     result.error = f"Failed to install platform {platform_id}: {install_result.error}"
@@ -622,7 +624,7 @@ void loop() {{
                         ino_files.append(os.path.join(root, file))
             return ino_files
         except Exception as e:
-            print(f"Error scanning directory: {str(e)}")
+            logger.error(f"Error scanning directory: {e}")
             return []
     
     def discover_projects(self, workspace: str = None) -> List[ArduinoProject]:
@@ -690,13 +692,13 @@ void loop() {{
                         error="Sketch file is empty. Please add Arduino code to the file."
                     )
             
-            print(f"Compiling sketch at {sketch_path} with FQBN: {fqbn}")
-            print(f"Sketch size: {len(code)} bytes")
+            logger.info(f"Compiling sketch at {sketch_path} with FQBN: {fqbn}")
+            logger.info(f"Sketch size: {len(code)} bytes")
             
             # Run compilation with verbose flag
-            compile_cmd = f"compile -v {sketch_path}"
+            compile_cmd = f"compile -v {shlex.quote(sketch_path)}"
             if fqbn:
-                compile_cmd += f" --fqbn {fqbn}"
+                compile_cmd += f" --fqbn {shlex.quote(fqbn)}"
             
             result = self.execute_cli_command(compile_cmd)
             
@@ -709,7 +711,7 @@ void loop() {{
                     if error_lines:
                         error_detail += "\n".join(error_lines)
                 
-                print(f"Compilation failed: {error_detail}")
+                logger.error(f"Compilation failed: {error_detail}")
                 
                 return CompileResult(
                     sketch=sketch_path,
@@ -718,14 +720,14 @@ void loop() {{
                     error=error_detail or "Compilation failed with unknown error"
                 )
             else:
-                print("Compilation successful!")
+                logger.info("Compilation successful!")
             
             # Extract binary path
             binary_path = ""
             match = re.search(r"Sketch uses .*\n(.*\.ino\..*)\n", result.output)
             if match:
                 binary_path = match.group(1)
-                print(f"Binary path: {binary_path}")
+                logger.info(f"Binary path: {binary_path}")
             
             return CompileResult(
                 sketch=sketch_path,
@@ -736,7 +738,7 @@ void loop() {{
             )
         except Exception as e:
             error_msg = f"Error during compilation process: {str(e)}"
-            print(error_msg)
+            logger.error(error_msg)
             return CompileResult(
                 sketch=sketch_path,
                 success=False,
@@ -752,7 +754,7 @@ void loop() {{
             return init_result
             
         # Then add the URL to the config
-        add_cmd = f"config add board_manager.additional_urls {url}"
+        add_cmd = f"config add board_manager.additional_urls {shlex.quote(url)}"
         return self.execute_cli_command(add_cmd)
     
     def update_index(self) -> ArduinoCommandResult:
@@ -763,7 +765,7 @@ void loop() {{
         """List all available boards, optionally filtered by platform"""
         cmd = "board listall"
         if platform_id:
-            cmd += f" {platform_id}"
+            cmd += f" {shlex.quote(platform_id)}"
         return self.execute_cli_command(cmd)
     
     def setup_esp32(self) -> Dict[str, ArduinoCommandResult]:
@@ -812,7 +814,7 @@ void loop() {{
                             binary_path = os.path.join(build_dir, file)
                             break
                 except Exception as e:
-                    print(f"Error searching for hex file: {e}")
+                    logger.warning(f"Error searching for hex file: {e}")
         else:
             # 從輸出中提取錯誤代碼
             # 常見的編譯錯誤代碼: 1=語法錯誤, 2=未定義引用, 3=庫錯誤, 4=板卡不支持
@@ -843,9 +845,9 @@ void loop() {{
                 "error": f"Hex file not found: {hex_path}"
             }
             
-        upload_cmd = f"upload -i {hex_path} -p {port}"
+        upload_cmd = f"upload -i {shlex.quote(hex_path)} -p {shlex.quote(port)}"
         if fqbn:
-            upload_cmd += f" --fqbn {fqbn}"
+            upload_cmd += f" --fqbn {shlex.quote(fqbn)}"
             
         full_command = f"arduino-cli {upload_cmd}"
         result = self.execute_cli_command(upload_cmd)
@@ -864,9 +866,9 @@ void loop() {{
             return self.upload_hex(hex_path, port, fqbn)
         else:
             # Otherwise use the sketch path
-            upload_cmd = f"upload -p {port} {sketch_path}"
+            upload_cmd = f"upload -p {shlex.quote(port)} {shlex.quote(sketch_path)}"
             if fqbn:
-                upload_cmd += f" --fqbn {fqbn}"
+                upload_cmd += f" --fqbn {shlex.quote(fqbn)}"
             
             full_command = f"arduino-cli {upload_cmd}"
             
@@ -977,10 +979,10 @@ void loop() {{
                     for file in os.listdir(build_dir):
                         if file.endswith(".hex"):
                             hex_path = os.path.join(build_dir, file)
-                            print(f"Found hex file in build directory: {hex_path}")
+                            logger.info(f"Found hex file in build directory: {hex_path}")
                             break
             except Exception as e:
-                print(f"Error searching for hex file: {e}")
+                logger.warning(f"Error searching for hex file: {e}")
                 
         # If we still couldn't find the hex file, return error
         if not hex_path or not os.path.exists(hex_path):
@@ -1012,12 +1014,12 @@ void loop() {{
 
     def install_library(self, library_name: str) -> ArduinoCommandResult:
         """安裝 Arduino 函式庫"""
-        install_cmd = f"lib install \"{library_name}\""
+        install_cmd = f"lib install {shlex.quote(library_name)}"
         return self.execute_cli_command(install_cmd)
 
     def search_library(self, query: str) -> ArduinoCommandResult:
         """搜尋 Arduino 函式庫"""
-        search_cmd = f"lib search \"{query}\" --format json"
+        search_cmd = f"lib search {shlex.quote(query)} --format json"
         return self.execute_cli_command(search_cmd)
 
     def list_installed_libraries(self) -> ArduinoCommandResult:
@@ -1027,14 +1029,14 @@ void loop() {{
 
     def uninstall_library(self, library_name: str) -> ArduinoCommandResult:
         """卸載 Arduino 函式庫"""
-        uninstall_cmd = f"lib uninstall \"{library_name}\""
+        uninstall_cmd = f"lib uninstall {shlex.quote(library_name)}"
         return self.execute_cli_command(uninstall_cmd)
 
     def get_library_examples(self, library_name: str) -> List[str]:
         """獲取函式庫中的範例清單"""
         try:
             # 執行指令查找函式庫位置
-            library_cmd = f"lib list \"{library_name}\" --format json"
+            library_cmd = f"lib list {shlex.quote(library_name)} --format json"
             result = self.execute_cli_command(library_cmd)
             
             if not result.success:
@@ -1064,7 +1066,7 @@ void loop() {{
                         
             return examples
         except Exception as e:
-            print(f"Error getting library examples: {str(e)}")
+            logger.error(f"Error getting library examples: {e}")
             return []
    
     def load_library_example(self, library_name: str, example_name: str) -> FileContent:
@@ -1094,7 +1096,7 @@ void loop() {{
             sketch_name = os.path.basename(os.path.dirname(target_example))
             return self.create_sketch(sketch_name, content)
         except Exception as e:
-            print(f"Error loading library example: {str(e)}")
+            logger.error(f"Error loading library example: {e}")
             return FileContent(
                 filepath="",
                 content="",
@@ -1234,7 +1236,7 @@ void loop() {{
                 extended_fqbn += ":" + ":".join(option_strings)
         
         # 執行一個簡單命令來測試配置
-        test_cmd = f"board details --fqbn \"{extended_fqbn}\""
+        test_cmd = f"board details --fqbn {shlex.quote(extended_fqbn)}"
         return self.execute_cli_command(test_cmd)
 
 async def serve(workdir=None) -> None:
@@ -1773,7 +1775,15 @@ async def serve(workdir=None) -> None:
 
 def main():
     import asyncio
-    
+    import sys
+
+    # Route all logs to stderr — stdout is reserved for the MCP stdio protocol
+    logging.basicConfig(
+        level=os.environ.get("ARDUINO_CLI_MCP_LOGLEVEL", "INFO").upper(),
+        stream=sys.stderr,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Arduino CLI MCP Server")
     parser.add_argument('--workdir', type=str, default=None,
@@ -1782,9 +1792,9 @@ def main():
     
     # Validate workdir
     if args.workdir and not os.path.exists(args.workdir):
-        print(f"Warning: Specified workdir '{args.workdir}' does not exist. Will try to create it.")
+        logger.warning(f"Specified workdir '{args.workdir}' does not exist. Will try to create it.")
     
-    print(f"Starting Arduino CLI MCP server with workdir: {args.workdir or 'current directory'}")
+    logger.info(f"Starting Arduino CLI MCP server with workdir: {args.workdir or 'current directory'}")
     asyncio.run(serve(workdir=args.workdir))
 
 if __name__ == "__main__":

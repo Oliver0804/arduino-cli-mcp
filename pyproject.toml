@@ -21,8 +21,14 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "mcp",
-    "pydantic",
+    "mcp>=1.4.1",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
 ]
 
 [project.urls]
@@ -32,3 +38,10 @@ dependencies = [
 
 [project.scripts]
 arduino-cli-mcp = "arduino_cli_mcp.main:main"
+
+[tool.setuptools.packages.find]
+include = ["arduino_cli_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

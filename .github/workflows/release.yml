@@ -1,0 +1,63 @@
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION=$(python -c "import tomllib,sys; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
+          echo "tag=$TAG_VERSION pkg=$PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match pyproject.toml version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Smoke-test the built wheel
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install dist/*.whl
+          /tmp/verify/bin/python -c "from arduino_cli_mcp.main import main, serve; assert callable(main) and callable(serve)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish via OIDC trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
