@@ -340,6 +340,8 @@ https://github.com/modelcontextprotocol/servers
 
 Pull requests are welcome! Feel free to contribute new ideas, bug fixes, or improvements to make arduino-cli-mcp more powerful and useful.
 
+For maintainers: the release / PyPI publish flow is documented in [RELEASING.md](RELEASING.md).
+
 ## Related Links
 
 - [Arduino CLI Documentation](https://arduino.github.io/arduino-cli/)

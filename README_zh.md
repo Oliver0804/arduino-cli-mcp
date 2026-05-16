@@ -340,6 +340,8 @@ https://github.com/modelcontextprotocol/servers
 
 歡迎提交 pull request！歡迎您貢獻新想法、錯誤修復或改進，使 arduino-cli-mcp 更加強大和實用。
 
+維護者請參考 [RELEASING.md](RELEASING.md) 了解發版／PyPI 發布流程。
+
 ## 相關鏈接
 
 - [Arduino CLI 文檔](https://arduino.github.io/arduino-cli/)
